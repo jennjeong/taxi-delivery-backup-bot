@@ -3,95 +3,152 @@
 # losing anything already in the backup.
 #
 # - A branch or PR head that moved forward is updated.
-# - A branch, PR head or tag that was overwritten (force push, history
-#   replaced) first keeps its old commit as archive/<name>/<UTC time>, then
-#   takes the new commit.
-# - Nothing is deleted: a branch deleted in the source stays in the backup.
-# - Backup-only refs (backup-bot, archive/*) are never touched.
+# - Before the backup is changed in a way that could hide its current state,
+#   that state is kept as a recovery ref and the ref is verified on the
+#   backup. This happens when:
+#     * a branch, PR head or tag was overwritten (force push, history replaced),
+#     * a forward update deletes files,
+#     * a branch or tag was deleted in the source (the backup ref itself is
+#       also left in place).
+#   Recovery refs: archive/<name>/<UTC time>[-deleted] (branches) and
+#   tags/archive/<name>/<UTC time>[-deleted] (tags).
+# - If keeping or verifying that state fails, the backup ref is left as it is
+#   (the update is held) and the run fails, so it is retried and reported.
+# - Nothing is deleted. Backup-only refs (backup-bot, archive/*) are never
+#   touched.
 # - Frozen branches (FROZEN, default "main") are never written by this
-#   script, so an overwrite can never reach them. Their source is followed
-#   in source/<name> instead, with the same archive rule.
+#   script. Their source is followed in source/<name> instead.
 set -euo pipefail
 
 : "${SRC_URL:?SRC_URL is required}"
 : "${DST_URL:?DST_URL is required}"
 FROZEN="${FROZEN:-main}"
 STAMP="${STAMP:-$(date -u +%Y%m%dT%H%MZ)}"
-WORK="$(mktemp -d)"
-trap 'rm -rf "$WORK"' EXIT
+# WORK_DIR (optional): keep the fetched repository there for the report step.
+if [ -n "${WORK_DIR:-}" ]; then
+  WORK="$WORK_DIR"; mkdir -p "$WORK"
+else
+  WORK="$(mktemp -d)"; trap 'rm -rf "$WORK"' EXIT
+fi
 cd "$WORK"
 git init -q --bare .
 git fetch -q "$SRC_URL" '+refs/heads/*:refs/src/heads/*' '+refs/tags/*:refs/src/tags/*' '+refs/pull/*/head:refs/src/pull/*'
 git fetch -q "$DST_URL" '+refs/heads/*:refs/dst/heads/*' '+refs/tags/*:refs/dst/tags/*'
 
-archives=()
-pushes=()
 log() { printf '%s\n' "$*"; }
-# SUMMARY_FILE (optional): human-readable lines for a notification.
+# SUMMARY_FILE (optional): human-readable lines (kept for older readers).
 note() { [ -n "${SUMMARY_FILE:-}" ] && printf '%s\n' "$*" >> "$SUMMARY_FILE"; return 0; }
-commits() { git log --no-merges --format='  - %an: %s' -n 5 "$@" 2>/dev/null; }
+# TRANSITIONS_FILE (optional): TSV lines read by scripts/report.py.
+record() { [ -n "${TRANSITIONS_FILE:-}" ] && printf '%s\n' "$(IFS=$'\t'; echo "$*")" >> "$TRANSITIONS_FILE"; return 0; }
 
-# sync <source ref> <backup name, e.g. heads/main or tags/v1> [archive name]
-sync() {
+# Planned work, one entry per backup ref: "name|new|archive_ref|old"
+# (new is empty for a deleted ref; archive empty when nothing to keep).
+plans=()
+
+# plan <source ref> <backup name, e.g. heads/main or tags/v1> [archive name]
+plan() {
   local src_ref="$1" name="$2"
-  local new old kind short
+  local new old kind short archive="" what
   new="$(git rev-parse "$src_ref")"
   old="$(git rev-parse -q --verify "refs/dst/$name" || true)"
   kind="${name%%/*}"
   short="${3:-${name#*/}}"
   if [ -z "$old" ]; then
-    pushes+=("+$new:refs/$name"); log "new      $name $new"
-    note "새 ${short} ($(git log -1 --format='%an: %s' "$new"))"
+    what=new
+  elif [ "$old" = "$new" ]; then
     return
+  elif [ "$kind" = "heads" ] && git merge-base --is-ancestor "$old" "$new" 2>/dev/null; then
+    if [ -n "$(git diff --name-only --diff-filter=D "$old" "$new")" ]; then
+      what=forward-deletes; archive="$kind/archive/$short/$STAMP"
+    else
+      what=forward
+    fi
+  else
+    what=overwrite; archive="$kind/archive/$short/$STAMP"
   fi
-  [ "$old" = "$new" ] && return
-  if [ "$kind" = "heads" ] && git merge-base --is-ancestor "$old" "$new" 2>/dev/null; then
-    pushes+=("$new:refs/$name"); log "forward  $name ${old:0:7}..${new:0:7}"
-    note "업데이트 ${short}: $(git rev-list --count "$old..$new")개 커밋"
-    note "$(commits "$old..$new")"
-    return
-  fi
-  # Overwritten: keep what the backup had, then follow the source.
-  archives+=("$old:refs/$kind/archive/$short/$STAMP")
-  pushes+=("+$new:refs/$name")
-  log "ARCHIVED $name ${old:0:7} -> $kind/archive/$short/$STAMP, now ${new:0:7}"
-  note "[주의] ${short}이(가) 덮어써졌어요. 이전 상태는 archive/${short}/${STAMP}에 보관했어요."
-  note "  지금: $(git log -1 --format='%an: %s' "$new")"
+  plans+=("$name|$new|$archive|$old")
+  record change "$src_ref" "$name" "${old:--}" "$new" "${archive:--}" "$what"
+  log "$what $name ${old:0:7} -> ${new:0:7}${archive:+ (keep as $archive)}"
 }
 
 frozen() { case " $FROZEN " in *" $1 "*) return 0 ;; esac; return 1; }
 
 while read -r ref; do
   b="${ref#refs/src/heads/}"
-  if frozen "$b"; then sync "$ref" "heads/source/$b" "$b"; else sync "$ref" "heads/$b"; fi
-done \
-  < <(git for-each-ref --format='%(refname)' refs/src/heads)
-while read -r ref; do sync "$ref" "tags/${ref#refs/src/tags/}"; done \
+  if frozen "$b"; then plan "$ref" "heads/source/$b" "$b"; else plan "$ref" "heads/$b"; fi
+done < <(git for-each-ref --format='%(refname)' refs/src/heads)
+while read -r ref; do plan "$ref" "tags/${ref#refs/src/tags/}"; done \
   < <(git for-each-ref --format='%(refname)' refs/src/tags)
-while read -r ref; do sync "$ref" "heads/pr/${ref#refs/src/pull/}"; done \
+while read -r ref; do plan "$ref" "heads/pr/${ref#refs/src/pull/}"; done \
   < <(git for-each-ref --format='%(refname)' refs/src/pull)
 
-if [ "${#pushes[@]}" -eq 0 ]; then
+# Branches and tags deleted in the source: keep them once as a recovery ref.
+while read -r ref sha; do
+  name="${ref#refs/dst/}"; kind="${name%%/*}"; short="${name#*/}"
+  case "$short" in backup-bot|archive/*|pr/*) continue ;; esac
+  if [ "$kind" = heads ]; then
+    case "$short" in
+      source/*) frozen "${short#source/}" || continue
+                short="${short#source/}"; src="refs/src/heads/$short" ;;
+      *) frozen "$short" && continue; src="refs/src/heads/$short" ;;
+    esac
+  else
+    src="refs/src/tags/$short"
+  fi
+  git rev-parse -q --verify "$src" >/dev/null && continue
+  # Already kept by an earlier run?
+  if git for-each-ref --format='%(objectname)' "refs/dst/$kind/archive/$short/" | grep -qx "$sha"; then
+    continue
+  fi
+  archive="$kind/archive/$short/$STAMP-deleted"
+  plans+=("$name||$archive|$sha")
+  record change "$src" "$name" "$sha" - "$archive" deleted
+  log "deleted $name ${sha:0:7} (keep as $archive)"
+done < <(git for-each-ref --format='%(refname) %(objectname)' refs/dst/heads refs/dst/tags)
+
+if [ "${#plans[@]}" -eq 0 ]; then
   log "no changes"
   exit 0
 fi
 
-# 1) Keep every overwritten state first, all or nothing.
-if [ "${#archives[@]}" -gt 0 ]; then
-  git push -q --atomic "$DST_URL" "${archives[@]}"
-  log "archived ${#archives[@]} overwritten ref(s)"
-fi
-
-# 2) Then follow the source one ref at a time, so one refused ref (for
-#    example a commit that edits workflow files, which GITHUB_TOKEN may not
-#    push) never blocks the others. Any refusal fails the run visibly.
-failed=0
-for spec in "${pushes[@]}"; do
-  if ! git push -q "$DST_URL" "$spec" 2>push.err; then
-    failed=$((failed + 1))
-    log "REFUSED  ${spec##*:} ($(tr '\n' ' ' < push.err | cut -c1-160))"
-    note "[실패] ${spec##*:} 백업에 올리지 못했어요."
+# 1) Keep every state that is about to be hidden, and check on the backup
+#    that the recovery ref really points at it.
+kept_ok=" "
+for p in "${plans[@]}"; do
+  IFS='|' read -r name new archive old <<< "$p"
+  [ -z "$archive" ] && continue
+  if git push -q "$DST_URL" "$old:refs/$archive" 2>push.err &&
+     [ "$(git ls-remote "$DST_URL" "refs/$archive" | cut -f1)" = "$old" ]; then
+    kept_ok+="$archive "
+    record archived "$archive" "$old" ok
+    log "kept     $archive ${old:0:7}"
+  else
+    record archived "$archive" "$old" failed
+    log "KEEP FAILED $archive ($(tr '\n' ' ' < push.err | cut -c1-160))"
+    note "[실패] ${name#*/}의 이전 상태를 보관하지 못해 백업 갱신을 보류했어요."
   fi
 done
-log "pushed $(( ${#pushes[@]} - failed )) of ${#pushes[@]} ref update(s)"
+
+# 2) Follow the source one ref at a time. A ref whose previous state could
+#    not be kept is held as it is. Any hold or refusal fails the run.
+failed=0
+for p in "${plans[@]}"; do
+  IFS='|' read -r name new archive old <<< "$p"
+  [ -z "$new" ] && continue   # deleted in the source: the backup ref stays
+  if [ -n "$archive" ] && [ "${kept_ok#* $archive }" = "$kept_ok" ]; then
+    failed=$((failed + 1)); record pushed "refs/$name" held
+    log "HELD     $name (previous state not kept)"
+    continue
+  fi
+  force=""
+  if [ -n "$archive" ] || [ -z "$old" ]; then force="+"; fi
+  if git push -q "$DST_URL" "$force$new:refs/$name" 2>push.err; then
+    record pushed "refs/$name" ok
+  else
+    failed=$((failed + 1)); record pushed "refs/$name" refused
+    log "REFUSED  $name ($(tr '\n' ' ' < push.err | cut -c1-160))"
+    note "[실패] $name 백업에 올리지 못했어요."
+  fi
+done
+log "done, $failed held or refused"
 [ "$failed" -eq 0 ]
