@@ -47,5 +47,5 @@ git push https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing.git archive/
 3. 이 저장소의 **Settings → Secrets and variables → Actions → New repository secret**에서 두 개를 추가합니다.
    - `TELEGRAM_BOT_TOKEN`: 1번의 토큰
    - `TELEGRAM_CHAT_ID`: 2번의 숫자
-4. **Actions → 원본 저장소 백업 → Run workflow**로 실행해 확인합니다(바뀐 게 없으면 알림이 오지 않습니다).
+4. **Actions → 원본 저장소 백업 → Run workflow**에서 "텔레그램 테스트 알림 보내기"를 체크하고 실행하면, 바뀐 게 없어도 테스트 알림이 옵니다.
 
