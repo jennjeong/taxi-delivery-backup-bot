@@ -5,7 +5,7 @@ New ones are created; a copy whose source changed (title, body, comments or
 state) is updated. GitHub keeps each issue's edit history, so an earlier
 version of a copied text can still be read there. Copies are never deleted,
 so an issue removed from the source stays in the backup.
-Needs: gh CLI, GH_TOKEN with issues: write on DST.
+Needs: gh CLI, GH_TOKEN with issues: write on DST; optional SRC_TOKEN for reading SRC.
 """
 import json
 import os
@@ -23,7 +23,12 @@ def gh(*args, data=None, ok=False):
     if DRY and "-X" in args:
         print("  (dry run) would call:", " ".join(args[:4]))
         return '{"number": 0}'
-    r = subprocess.run(["gh", *args], input=data, capture_output=True, text=True)
+    # Reads of the source use SRC_TOKEN (the source is public; its org may
+    # refuse long-lived personal tokens). Everything else uses GH_TOKEN.
+    env = dict(os.environ)
+    if os.environ.get("SRC_TOKEN") and any(f"repos/{SRC}" in a for a in args):
+        env["GH_TOKEN"] = os.environ["SRC_TOKEN"]
+    r = subprocess.run(["gh", *args], input=data, capture_output=True, text=True, env=env)
     if r.returncode != 0 and not ok:
         raise RuntimeError(f"gh {' '.join(args[:3])}: {r.stderr.strip()[:300]}")
     return r.stdout

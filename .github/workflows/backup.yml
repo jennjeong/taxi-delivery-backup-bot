@@ -89,6 +89,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ secrets.BACKUP_TOKEN }}
+          SRC_TOKEN: ${{ github.token }}
           SUMMARY_FILE: ${{ env.ISSUES_SUMMARY_FILE }}
         run: python3 scripts/sync_issues.py
 
