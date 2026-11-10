@@ -8,10 +8,14 @@
 #   takes the new commit.
 # - Nothing is deleted: a branch deleted in the source stays in the backup.
 # - Backup-only refs (backup-bot, archive/*) are never touched.
+# - Frozen branches (FROZEN, default "main") are never written by this
+#   script, so an overwrite can never reach them. Their source is followed
+#   in source/<name> instead, with the same archive rule.
 set -euo pipefail
 
 : "${SRC_URL:?SRC_URL is required}"
 : "${DST_URL:?DST_URL is required}"
+FROZEN="${FROZEN:-main}"
 STAMP="${STAMP:-$(date -u +%Y%m%dT%H%MZ)}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
@@ -24,14 +28,14 @@ archives=()
 pushes=()
 log() { printf '%s\n' "$*"; }
 
-# sync <source ref> <backup name, e.g. heads/main or tags/v1>
+# sync <source ref> <backup name, e.g. heads/main or tags/v1> [archive name]
 sync() {
   local src_ref="$1" name="$2"
   local new old kind short
   new="$(git rev-parse "$src_ref")"
   old="$(git rev-parse -q --verify "refs/dst/$name" || true)"
   kind="${name%%/*}"
-  short="${name#*/}"
+  short="${3:-${name#*/}}"
   if [ -z "$old" ]; then
     pushes+=("+$new:refs/$name"); log "new      $name $new"
     return
@@ -47,7 +51,12 @@ sync() {
   log "ARCHIVED $name ${old:0:7} -> $kind/archive/$short/$STAMP, now ${new:0:7}"
 }
 
-while read -r ref; do sync "$ref" "heads/${ref#refs/src/heads/}"; done \
+frozen() { case " $FROZEN " in *" $1 "*) return 0 ;; esac; return 1; }
+
+while read -r ref; do
+  b="${ref#refs/src/heads/}"
+  if frozen "$b"; then sync "$ref" "heads/source/$b" "$b"; else sync "$ref" "heads/$b"; fi
+done \
   < <(git for-each-ref --format='%(refname)' refs/src/heads)
 while read -r ref; do sync "$ref" "tags/${ref#refs/src/tags/}"; done \
   < <(git for-each-ref --format='%(refname)' refs/src/tags)
