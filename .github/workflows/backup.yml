@@ -18,6 +18,7 @@ concurrency:
 env:
   SRC_REPO: SYU-Taxi-Delivery/taxi-delivery-sharing
   DST_REPO: ${{ github.repository }}
+  SUMMARY_FILE: ${{ github.workspace }}/../backup-summary.txt
 
 jobs:
   backup:
@@ -45,3 +46,38 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/sync_issues.py
+
+      # Telegram: only when something was backed up (or the run failed).
+      # Needs secrets TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID; skipped without them.
+      - name: 텔레그램 알림
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$TELEGRAM_BOT_TOKEN" ] || [ -z "$TELEGRAM_CHAT_ID" ]; then
+            echo "텔레그램 시크릿이 없어 알림을 건너뜁니다."; exit 0
+          fi
+          touch "$SUMMARY_FILE"
+          if [ "$JOB_STATUS" != "success" ]; then
+            echo "[실패] 백업 실행이 실패했어요. 기록을 확인해 주세요." >> "$SUMMARY_FILE"
+          fi
+          if ! grep -q '[^[:space:]]' "$SUMMARY_FILE"; then
+            echo "바뀐 내용이 없어 알림을 보내지 않습니다."; exit 0
+          fi
+          {
+            echo "[백업] ${SRC_REPO}"
+            echo
+            grep -v '^[[:space:]]*$' "$SUMMARY_FILE"
+            echo
+            echo "백업: https://github.com/${DST_REPO}"
+            echo "실행 기록: ${RUN_URL}"
+          } | head -c 3900 | iconv -c -f UTF-8 -t UTF-8 > message.txt
+          curl -sS --fail -o /dev/null -X POST \
+            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text@message.txt" \
+            --data "disable_web_page_preview=true"
+          echo "텔레그램 알림을 보냈어요."

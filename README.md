@@ -35,3 +35,17 @@ git push https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing.git archive/
 - 공개 저장소에 60일 동안 활동이 없으면 GitHub가 예약 실행을 멈춥니다. 그때는 `Actions` 탭에서 다시 켜 주세요.
 - 기본 토큰은 워크플로 파일을 바꾸는 커밋을 올릴 수 없습니다. 그런 커밋이 생기면 실행이 실패로 표시되고,
   `BACKUP_TOKEN` 시크릿(이 저장소의 Contents·Workflows 쓰기 권한 토큰)을 넣으면 해결됩니다. 이때도 덮어써진 이전 상태는 먼저 보관됩니다.
+
+## 텔레그램 알림
+
+백업이 새 내용을 가져왔을 때(새 브랜치·커밋, 덮어쓰기 감지, 새 이슈·PR)와 실행이 실패했을 때만 텔레그램으로 알려 줍니다.
+바뀐 게 없으면 보내지 않습니다.
+
+1. 텔레그램에서 `@BotFather`에게 `/newbot`을 보내 봇을 만들고 토큰을 받습니다.
+2. 만든 봇과 대화를 열어 아무 메시지나 보낸 뒤, 브라우저에서
+   `https://api.telegram.org/bot<토큰>/getUpdates`를 열어 `"chat":{"id": …}`의 숫자를 확인합니다.
+3. 이 저장소의 **Settings → Secrets and variables → Actions → New repository secret**에서 두 개를 추가합니다.
+   - `TELEGRAM_BOT_TOKEN`: 1번의 토큰
+   - `TELEGRAM_CHAT_ID`: 2번의 숫자
+4. **Actions → 원본 저장소 백업 → Run workflow**로 실행해 확인합니다(바뀐 게 없으면 알림이 오지 않습니다).
+

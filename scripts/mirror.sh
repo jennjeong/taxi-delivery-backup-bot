@@ -27,6 +27,9 @@ git fetch -q "$DST_URL" '+refs/heads/*:refs/dst/heads/*' '+refs/tags/*:refs/dst/
 archives=()
 pushes=()
 log() { printf '%s\n' "$*"; }
+# SUMMARY_FILE (optional): human-readable lines for a notification.
+note() { [ -n "${SUMMARY_FILE:-}" ] && printf '%s\n' "$*" >> "$SUMMARY_FILE"; return 0; }
+commits() { git log --no-merges --format='  - %an: %s' -n 5 "$@" 2>/dev/null; }
 
 # sync <source ref> <backup name, e.g. heads/main or tags/v1> [archive name]
 sync() {
@@ -38,17 +41,22 @@ sync() {
   short="${3:-${name#*/}}"
   if [ -z "$old" ]; then
     pushes+=("+$new:refs/$name"); log "new      $name $new"
+    note "새 ${short} ($(git log -1 --format='%an: %s' "$new"))"
     return
   fi
   [ "$old" = "$new" ] && return
   if [ "$kind" = "heads" ] && git merge-base --is-ancestor "$old" "$new" 2>/dev/null; then
     pushes+=("$new:refs/$name"); log "forward  $name ${old:0:7}..${new:0:7}"
+    note "업데이트 ${short}: $(git rev-list --count "$old..$new")개 커밋"
+    note "$(commits "$old..$new")"
     return
   fi
   # Overwritten: keep what the backup had, then follow the source.
   archives+=("$old:refs/$kind/archive/$short/$STAMP")
   pushes+=("+$new:refs/$name")
   log "ARCHIVED $name ${old:0:7} -> $kind/archive/$short/$STAMP, now ${new:0:7}"
+  note "[주의] ${short}이(가) 덮어써졌어요. 이전 상태는 archive/${short}/${STAMP}에 보관했어요."
+  note "  지금: $(git log -1 --format='%an: %s' "$new")"
 }
 
 frozen() { case " $FROZEN " in *" $1 "*) return 0 ;; esac; return 1; }
@@ -82,6 +90,7 @@ for spec in "${pushes[@]}"; do
   if ! git push -q "$DST_URL" "$spec" 2>push.err; then
     failed=$((failed + 1))
     log "REFUSED  ${spec##*:} ($(tr '\n' ' ' < push.err | cut -c1-160))"
+    note "[실패] ${spec##*:} 백업에 올리지 못했어요."
   fi
 done
 log "pushed $(( ${#pushes[@]} - failed )) of ${#pushes[@]} ref update(s)"

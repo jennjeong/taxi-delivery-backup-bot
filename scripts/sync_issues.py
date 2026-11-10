@@ -15,6 +15,7 @@ import subprocess
 SRC = os.environ["SRC_REPO"]
 DST = os.environ["DST_REPO"]
 DRY = os.environ.get("DRY_RUN") == "1"
+SUMMARY = os.environ.get("SUMMARY_FILE")
 TITLE = re.compile(r"^\[원본 (?:이슈|PR) #(\d+)\]")
 
 
@@ -36,6 +37,12 @@ def api_all(path):
     for page in pages:
         items.extend(page if isinstance(page, list) else [page])
     return items
+
+
+def note(line):
+    if SUMMARY:
+        with open(SUMMARY, "a", encoding="utf-8") as f:
+            f.write(line + "\n")
 
 
 def ensure_labels():
@@ -101,12 +108,14 @@ def main():
                    data=json.dumps({"state": "closed"}))
             created += 1
             print(f"created #{n} -> #{new['number']}")
+            note(f"새 {title} ({it['user']['login']})")
             continue
         if copy["title"] != title or (copy.get("body") or "") != body or copy["state"] != state:
             gh("api", "-X", "PATCH", f"repos/{DST}/issues/{copy['number']}", "--input", "-",
                data=json.dumps({"title": title, "body": body, "state": state, "labels": labels}))
             updated += 1
             print(f"updated #{n} -> #{copy['number']}")
+            note(f"바뀜 {title}")
     print(f"issues: {created} created, {updated} updated")
 
 
