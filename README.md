@@ -1,24 +1,22 @@
 # 백업 봇
 
-이 브랜치(`backup-bot`)는 [SYU-Taxi-Delivery/taxi-delivery-sharing](https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing)을
-10분마다 확인해 이 저장소에 백업합니다. 원본과 상관없이 이 저장소에서 돌아가므로 원본이 통째로 덮어써져도 멈추지 않습니다.
+[SYU-Taxi-Delivery/taxi-delivery-sharing](https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing)(원본)을
+10분마다 확인해 [jennjeong/taxi-delivery-sharing](https://github.com/jennjeong/taxi-delivery-sharing)(백업)에 복제합니다.
+봇은 원본과 백업 어느 쪽에도 없는 이 저장소에서 돌아가므로, 원본이 통째로 덮어써져도 멈추지 않고
+백업 저장소에는 원본의 브랜치만 남습니다.
 
 ## 무엇을 백업하나
 
-- 모든 브랜치·태그와 각 PR의 코드(`pr/번호` 브랜치)
-- 이슈와 PR 글·댓글(`[원본 이슈 #N]`, `[원본 PR #N]` 이슈로 복사)
+- 원본 Git이 추적하는 모든 파일과 커밋 이력: 모든 브랜치·태그, 각 PR의 코드(`pr/번호` 브랜치)
+- 이슈와 PR 글·댓글(백업 저장소에 `[원본 이슈 #N]`, `[원본 PR #N]` 이슈로 복사)
 
-## main은 고정
+## 백업 저장소 구조
 
-이 저장소의 `main`은 백업 시점 그대로 고정돼 있고 봇도 덮어쓰지 않습니다(PR로만 바꿀 수 있는 보호 규칙).
-원본 `main`의 최신 상태는 `source/main` 브랜치가 따라갑니다.
-
-## 원본 파일 보기
-
-원본 파일(`src`, `docs`, `.github`, `README.md` …)은 원본과 같은 경로로 들어 있습니다.
-
-- 원본 `main`의 최신 상태: [`source/main`](https://github.com/jennjeong/taxi-delivery-sharing/tree/source/main)
-- 그 밖의 브랜치: 원본과 같은 이름 (예: `fix/auth-week5-verification`)
+- 기본 브랜치 `source/main`: 원본 `main`을 그대로 따라갑니다. `git clone`하면 원본과 같은 파일이 같은 경로에 내려옵니다.
+- `main`: 처음 백업한 시점 그대로 고정(PR로만 바꿀 수 있는 보호 규칙). 봇이 덮어쓰지 않습니다.
+- 그 밖의 브랜치·태그: 원본과 같은 이름
+- `archive/...`: 지워지거나 덮어써진 이전 버전(아래)
+- `backup-bot`: 봇을 이 저장소로 옮기기 전의 봇 설정(보존용, 실행되지 않음)
 
 ## 지워지거나 덮어써졌을 때
 
@@ -51,8 +49,10 @@ git push https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing.git origin/a
 
 - GitHub 예약 실행은 몇 분씩 늦어질 수 있습니다. `Actions` 탭의 **Run workflow**로 바로 실행할 수도 있습니다.
 - 공개 저장소에 60일 동안 활동이 없으면 GitHub가 예약 실행을 멈춥니다. 그때는 `Actions` 탭에서 다시 켜 주세요.
-- 기본 토큰은 워크플로 파일을 바꾸는 커밋을 올릴 수 없습니다. 그런 커밋이 생기면 실행이 실패로 표시되고,
-  `BACKUP_TOKEN` 시크릿(이 저장소의 Contents·Workflows 쓰기 권한 토큰)을 넣으면 해결됩니다. 이때도 덮어써진 이전 상태는 먼저 보관됩니다.
+- 이 저장소의 시크릿 세 개가 필요합니다.
+  - `BACKUP_TOKEN`: 백업 저장소 하나에만 접근하는 fine-grained 토큰. 권한은 Contents·Workflows·Issues를 Read and write로.
+    만료되면 실행이 실패하고 텔레그램으로 알려 줍니다. 새로 만든 뒤 **Run workflow**에서 "BACKUP_TOKEN 확인"으로 점검합니다.
+  - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`: 아래 텔레그램 알림
 
 ## 텔레그램 알림
 
@@ -63,9 +63,10 @@ git push https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing.git origin/a
   되돌린 것이 비교로 확인됐을 때. 커밋이 이력에서만 빠졌는지, 파일 내용까지 사라졌는지 구분해 적습니다.
   리베이스·스쿼시로 해시만 바뀌고 같은 변경이 남아 있으면 유실로 보지 않습니다.
 - `⚠️ 덮어쓰기 감지 · 유실 여부 확인 필요`: 덮어쓰기는 확인됐지만 이전 커밋을 읽을 수 없어 비교하지 못했을 때
-- `💾 최신 상태 반영`: 완료 / 보류(이전 버전 보관 실패로 기존 백업 유지) / 실패
-- `🛟 이전 버전 복구 가능`: 덮어써지거나 지워진 버전을 백업에서 다시 받아 열어 본 경우에만, 그 버전과 파일 링크
+- `💾 최신 파일 백업`: 완료(백업의 커밋·파일이 원본과 같음) / 보류(이전 버전 보관 실패로 기존 백업 유지) / 실패. 완료가 아니면 아직 백업에 없는 파일을 함께 적습니다.
+- `🛟 이전 버전 복구`: 덮어써지거나 지워진 버전을 백업에서 다시 받아 열어 본 경우에만 "복구 가능"과 그 버전·파일 링크
 - `⚠️ 이전 버전 복구 미확인`: 원본에서 사라진 버전을 백업에서도 찾지 못했을 때
+- `⚠️ 백업 불일치`: 실행 뒤 원본의 모든 브랜치·태그와 기본 브랜치를 백업과 다시 비교해, 다른 곳이 남아 있을 때 브랜치와 파일을 알려 줍니다.
 
 설정:
 

@@ -1,7 +1,8 @@
 name: 원본 저장소 백업
 
-# Runs on its own schedule, outside the source repository, so a push that
-# overwrites the source (and its workflow files) cannot stop it.
+# Runs in its own repository, outside both the source and the backup, so a
+# push that overwrites the source cannot stop it, and the backup holds only
+# the source's own branches (its default branch is the source's).
 on:
   schedule:
     - cron: "*/10 * * * *"
@@ -21,8 +22,7 @@ on:
         default: false
 
 permissions:
-  contents: write
-  issues: write
+  contents: read
 
 concurrency:
   group: backup
@@ -30,7 +30,7 @@ concurrency:
 
 env:
   SRC_REPO: SYU-Taxi-Delivery/taxi-delivery-sharing
-  DST_REPO: ${{ github.repository }}
+  DST_REPO: jennjeong/taxi-delivery-sharing
   WORK_DIR: ${{ github.workspace }}/../mirror.git
   TRANSITIONS_FILE: ${{ github.workspace }}/../transitions.tsv
   ISSUES_SUMMARY_FILE: ${{ github.workspace }}/../issues-summary.txt
@@ -41,8 +41,13 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: backup-bot
+
+      # BACKUP_TOKEN: fine-grained token for the backup repository only, with
+      # Contents, Workflows and Issues set to read and write.
+      - name: 토큰 확인
+        env:
+          TOKEN: ${{ secrets.BACKUP_TOKEN }}
+        run: '[ -n "$TOKEN" ] || { echo "BACKUP_TOKEN 시크릿이 없어요."; exit 1; }'
 
       - name: 시각 기록
         run: echo "STAMP=$(date -u +%Y%m%dT%H%MZ)" >> "$GITHUB_ENV"
@@ -71,9 +76,7 @@ jobs:
       - name: 코드 백업 (이전 버전 보관 후 최신 상태 반영)
         id: mirror
         env:
-          # BACKUP_TOKEN (optional): a token that may also push commits which
-          # change workflow files. Without it, GITHUB_TOKEN is used.
-          TOKEN: ${{ secrets.BACKUP_TOKEN || github.token }}
+          TOKEN: ${{ secrets.BACKUP_TOKEN }}
         run: |
           git config --global user.name "backup-bot"
           git config --global user.email "backup-bot@users.noreply.github.com"
@@ -85,7 +88,7 @@ jobs:
         id: issues
         if: always()
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ secrets.BACKUP_TOKEN }}
           SUMMARY_FILE: ${{ env.ISSUES_SUMMARY_FILE }}
         run: python3 scripts/sync_issues.py
 
@@ -95,7 +98,7 @@ jobs:
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
-          TOKEN: ${{ secrets.BACKUP_TOKEN || github.token }}
+          TOKEN: ${{ secrets.BACKUP_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           MIRROR_OUTCOME: ${{ steps.mirror.outcome }}

@@ -166,8 +166,8 @@ commit("alice", {"src/app.ts": "export const a = 2;\n"}, "상수 변경")
 push("s1", "alice")
 expect("1. 일반 푸시", backup("normal"),
        has=["🔔 GitHub 원본 변경 감지", "브랜치: s1", "푸시한 사람: alice", "시각: 2026-11-10",
-            "로그인 문구 &lt;수정&gt; &amp; 정리", "💾 최신 상태 반영", "• 완료: 백업", "변경 내역 보기"],
-       lacks=["⚠️", "🛟"])
+            "로그인 문구 &lt;수정&gt; &amp; 정리", "💾 최신 파일 백업", "• 완료: 백업", "변경 내역 보기"],
+       lacks=["⚠️", "🛟", "백업 불일치"])
 assert latest_matches()
 
 # 2) Force push that drops bob's commits.
@@ -182,7 +182,7 @@ push("s2", "alice", force=True)
 expect("2. 다른 작성자 커밋이 빠진 강제 푸시", backup("force"),
        has=["⚠️ 변경 유실 주의", "(강제 푸시)", "푸시한 사람: alice", "결제 모듈 추가 — 작성자 bob",
             "변경 내용도 현재 브랜치에 없음 (src/pay.ts 없음)", "앱 상수 주석 — 작성자 bob · 현재 브랜치 이력에서 빠짐",
-            "🛟 이전 버전 복구 가능", "archive/s2/", "백업에서 열리는 것 확인"])
+            "🛟 이전 버전 복구", "archive/s2/", "백업에서 열리는 것 확인"])
 assert restore(results[-1][1], "src/pay.ts") == "pay"
 assert restore(results[-1][1], "src/app.ts") == "export const a = 1; // bob"
 assert latest_matches()
@@ -206,7 +206,7 @@ push("s3", "alice", force=True)
 msgs = backup("rebase")
 msgs = [m for m in msgs if "브랜치: s3" in m]
 expect("3. 내용이 보존된 리베이스", msgs,
-       has=["(강제 푸시)", "같은 변경이 현재 브랜치에 남아 있어요", "🛟 이전 버전 복구 가능"],
+       has=["(강제 푸시)", "같은 변경이 현재 브랜치에 남아 있어요", "🛟 이전 버전 복구"],
        lacks=["⚠️", "이력에서 빠짐"])
 
 # 4) Normal push that undoes bob's change: stale copy of a file, and a merge
@@ -276,7 +276,7 @@ backup("bob s7")
 commit("alice", {"docs/guide.md": None, "README.md": "두유팟 v3\n"}, "문서 정리")
 push("s7", "alice")
 expect("7. 일반 푸시에서 팀원 파일 삭제", backup("delete file"),
-       has=["삭제된 파일", "• docs/guide.md", "• 완료: 백업", "🛟 이전 버전 복구 가능", "archive/s7/", "• 파일:",
+       has=["삭제된 파일", "• docs/guide.md", "• 완료: 백업", "🛟 이전 버전 복구", "archive/s7/", "• 파일:",
             "docs/guide.md</a>"], lacks=["⚠️"])
 assert restore(results[-1][1], "docs/guide.md") == "# 가이드\n팀 규칙 정리"
 assert latest_matches()
@@ -292,7 +292,7 @@ activity.insert(0, {"ref": "refs/heads/s8", "before": before, "after": "0" * 40,
                     "timestamp": "2026-11-10T05:58:00Z", "activity_type": "branch_deletion"})
 expect("8. 브랜치 삭제", backup("delete branch"),
        has=["⚠️ 변경 유실 주의", "(브랜치 삭제)", "푸시한 사람: alice", "리포트 화면 — 작성자 bob · 원본 어느 브랜치에도 없음",
-            "백업의 같은 이름 브랜치는 지우지 않고", "🛟 이전 버전 복구 가능", "-deleted"])
+            "백업의 같은 이름 브랜치는 지우지 않고", "🛟 이전 버전 복구", "-deleted"])
 assert restore(results[-1][1], "src/report.ts") == "report"
 assert sh("git", "--git-dir", DST, "rev-parse", "refs/heads/s8", cwd=T) == before, "backup branch kept"
 again = backup("again"); assert "no changes" in last_run["mirror"] and not any("🔔" in m for m in again), again
@@ -309,8 +309,10 @@ push("s2", "alice", force=True)
 msgs = backup("hold")
 assert sh("git", "--git-dir", DST, "rev-parse", "refs/heads/s2", cwd=T) == held_before, "backup s2 untouched"
 assert any("❌ 백업 실행 실패" in m and "보류한 브랜치: s2" in m for m in msgs), msgs
+assert any("⚠️ 백업 불일치" in m and "브랜치 s2" in m and "src/app.ts: 내용 다름" in m for m in msgs), msgs
+results.append(("9. (불일치 알림)", [m for m in msgs if "백업 불일치" in m][0]))
 expect("9. 이전 버전 보관 실패 → 갱신 보류", [m for m in msgs if "브랜치: s2" in m and "🔔" in m],
-       has=["• 보류: 이전 버전을 보관·검증하지 못해 기존 백업을 그대로 뒀어요", "🛟 이전 버전 복구 가능"])
+       has=["• 보류: 이전 버전을 보관·검증하지 못해 기존 백업을 그대로 뒀어요", "아직 백업에 없는 변경", "src/app.ts: 내용 다름", "🛟 이전 버전 복구"])
 results.append(("9. (실패 알림)", [m for m in msgs if "❌" in m][0]))
 os.remove(hook)
 msgs = backup("retry")

@@ -29,6 +29,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import urllib.error
 import urllib.parse
@@ -331,6 +332,55 @@ def quote(path):
     return urllib.parse.quote(path, safe="/")
 
 
+def describe_diff(have_sha, want_sha):
+    """Files that differ between what the backup has and the source."""
+    if not want_sha or not have(want_sha):
+        return []
+    if not have_sha or not have(have_sha):
+        return ["백업에 이 브랜치가 없음"]
+    names = {"A": "없음", "D": "백업에만 있음", "M": "내용 다름", "T": "종류 다름"}
+    out = []
+    for row in lines(git("diff", "--raw", "--no-renames", have_sha, want_sha)):
+        meta, path = row.split("\t", 1)
+        f = meta.split()
+        status = f[4][0]
+        if status == "M" and f[0] != f[1] and f[2] == f[3]:
+            out.append(f"{path}: 실행 권한 다름")
+        else:
+            out.append(f"{path}: {names.get(status, status)}")
+    return out
+
+
+def audit():
+    """Compare every source branch and tag, and the default branch, with the
+    backup after this run. Returns a list of problems (empty: all match)."""
+    load_dst_refs()
+    problems = []
+    frozen = set(ENV.get("FROZEN", "main").split())
+    for ref in lines(git("for-each-ref", "--format=%(refname)", "refs/src/heads", "refs/src/tags")):
+        kind, name = ("heads", ref[len("refs/src/heads/"):]) if ref.startswith("refs/src/heads/") \
+            else ("tags", ref[len("refs/src/tags/"):])
+        dst = f"heads/source/{name}" if kind == "heads" and name in frozen else f"{kind}/{name}"
+        want = git("rev-parse", ref)
+        got = dst_refs.get(dst)
+        if got == want:
+            continue
+        label = ("브랜치 " if kind == "heads" else "태그 ") + name
+        detail = describe_diff(got, want)
+        problems.append((label, f"원본 <code>{want[:7]}</code> · 백업 " + (f"<code>{got[:7]}</code>" if got else "없음"),
+                         detail))
+    if ENV.get("NO_API") != "1":
+        def default(repo):
+            r = subprocess.run(["gh", "api", f"repos/{repo}", "--jq", ".default_branch"], capture_output=True, text=True)
+            return r.stdout.strip() if r.returncode == 0 else None
+        src_default, dst_default = default(SRC), default(DST)
+        if src_default and dst_default:
+            want = f"source/{src_default}" if src_default in frozen else src_default
+            if dst_default != want:
+                problems.append(("기본 브랜치", f"백업 기본 브랜치가 {E(dst_default)}예요. 원본 {E(src_default)}에 맞춰 {E(want)}여야 클론했을 때 원본 파일이 보여요.", []))
+    return problems
+
+
 # ------------------------------------------------------------- analysis
 def kst(ts):
     if not ts:
@@ -424,6 +474,9 @@ def analyse(push, change, pushed, archived):
                        change["name"].split("/", 1)[1] if status == "ok" else None)
         if status == "ok" and opens(change["name"], after) is None:
             p["latest"] = ("unknown", None)
+        if status in ("held", "refused"):
+            base = dst_refs.get(change["name"])
+            p["missing"] = describe_diff(base, after)
     else:
         kept = recovery(after, short)
         p["latest"] = ("between", kept) if kept else ("unknown", None)
@@ -529,13 +582,13 @@ def message(p, label):
         out += [commit_line(c) for c in shown]
 
     # 💾 latest state
-    out += ["", "<b>💾 최신 상태 반영</b>"]
+    out += ["", "<b>💾 최신 파일 백업</b>"]
     if deleted:
         out.append("• 원본에서 지워졌어요. 백업의 같은 이름 브랜치는 지우지 않고 그대로 둬요.")
     else:
         state, ref = p.get("latest", ("unknown", None))
         if state == "done":
-            out.append(f"• 완료: 백업 {link(f'{WEB}/{DST}/tree/{quote(ref)}', ref)}가 원본과 같아요.")
+            out.append(f"• 완료: 백업 {link(f'{WEB}/{DST}/tree/{quote(ref)}', ref)}의 커밋과 파일이 원본과 같아요.")
         elif state == "held":
             out.append("• 보류: 이전 버전을 보관·검증하지 못해 기존 백업을 그대로 뒀어요. 다음 실행에서 다시 시도해요.")
         elif state == "failed":
@@ -546,13 +599,18 @@ def message(p, label):
             out.append("• 반영 못함: 다음 백업 전에 덮어써져 이 상태를 가져오지 못했어요.")
         else:
             out.append("• 확인 못함")
+        if state in ("held", "failed") and p.get("missing"):
+            out.append("• 아직 백업에 없는 변경:")
+            out += [f"  {E(m)}" for m in p["missing"][:5]]
+            if len(p["missing"]) > 5:
+                out.append(f"  외 {len(p['missing']) - 5}개")
 
     # 🛟 previous version
     if p.get("needs_recovery") or deleted:
         rec = p.get("recovery")
         if rec:
-            out += ["", "<b>🛟 이전 버전 복구 가능</b>"]
-            out.append(f"• 버전: {link(rec['link'], rec['ref'])} (커밋 <code>{rec['sha'][:7]}</code>, 백업에서 열리는 것 확인)")
+            out += ["", "<b>🛟 이전 버전 복구</b>"]
+            out.append(f"• 복구 가능: {link(rec['link'], rec['ref'])} (커밋 <code>{rec['sha'][:7]}</code>, 백업에서 열리는 것 확인)")
             for f in rec["files"]:
                 out.append(f"• 파일: {link(f'{WEB}/{DST}/blob/{quote(rec['at'])}/{quote(f)}', f)}")
         else:
@@ -627,6 +685,17 @@ def main():
                            "time": None, "type": None}]
             for push in pushes:
                 messages.append(message(analyse(push, change, pushed, archived), label_for(change)))
+    problems = audit() if GIT_DIR and DST_URL else []
+    if problems and (changes or ENV.get("MIRROR_OUTCOME") not in (None, "", "success") or ENV.get("TEST_MESSAGE") == "true"):
+        body = ["<b>⚠️ 백업 불일치</b>", "아래 항목은 아직 원본과 같지 않아 백업 완료로 보지 않아요.", ""]
+        for label, what, detail in problems[:8]:
+            body.append(f"• {E(label)}: {what}")
+            body += [f"  {E(d)}" for d in detail[:3]]
+        if len(problems) > 8:
+            body.append(f"외 {len(problems) - 8}개")
+        messages.append("\n".join(body))
+    elif not problems and changes:
+        print("검사: 원본의 모든 브랜치·태그가 백업과 같아요.", file=sys.stderr)
     issues = ENV.get("ISSUES_SUMMARY_FILE")
     if issues and os.path.exists(issues):
         text = [l.rstrip() for l in open(issues, encoding="utf-8") if l.strip()]
