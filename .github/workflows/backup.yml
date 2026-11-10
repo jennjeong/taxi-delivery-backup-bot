@@ -11,6 +11,10 @@ on:
         description: "바뀐 게 없어도 텔레그램 테스트 알림 보내기"
         type: boolean
         default: false
+      check_token:
+        description: "BACKUP_TOKEN 확인 (워크플로 파일을 바꾼 커밋을 임시 브랜치에 올렸다가 지움)"
+        type: boolean
+        default: false
       send_examples:
         description: "알림 예시(테스트 저장소 시나리오)를 텔레그램으로 보내기"
         type: boolean
@@ -46,6 +50,24 @@ jobs:
       # Before hiding any backed-up state (force push, deleted files, deleted
       # branch) it is kept as archive/... and verified; otherwise that ref is
       # held as it was and this step fails.
+      - name: BACKUP_TOKEN 확인
+        if: ${{ inputs.check_token }}
+        env:
+          TOKEN: ${{ secrets.BACKUP_TOKEN }}
+        run: |
+          [ -n "$TOKEN" ] || { echo "BACKUP_TOKEN 시크릿이 없어요."; exit 1; }
+          d="$(mktemp -d)"; cd "$d"; git init -q
+          git fetch -q --depth 1 "https://github.com/${SRC_REPO}.git" main
+          git checkout -q FETCH_HEAD
+          f="$(ls .github/workflows/* | head -1)"
+          echo "# token check" >> "$f"
+          git -c user.name=backup-bot -c user.email=backup-bot@users.noreply.github.com commit -qam "token check"
+          url="https://x-access-token:${TOKEN}@github.com/${DST_REPO}.git"
+          ref="refs/heads/token-check/${GITHUB_RUN_ID}"
+          git push -q "$url" "HEAD:$ref"
+          git push -q "$url" ":$ref"
+          echo "BACKUP_TOKEN으로 워크플로 파일($f)을 바꾼 커밋을 올리고 지웠어요."
+
       - name: 코드 백업 (이전 버전 보관 후 최신 상태 반영)
         id: mirror
         env:

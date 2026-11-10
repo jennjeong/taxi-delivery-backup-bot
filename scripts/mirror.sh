@@ -85,7 +85,7 @@ while read -r ref; do plan "$ref" "heads/pr/${ref#refs/src/pull/}"; done \
 # Branches and tags deleted in the source: keep them once as a recovery ref.
 while read -r ref sha; do
   name="${ref#refs/dst/}"; kind="${name%%/*}"; short="${name#*/}"
-  case "$short" in backup-bot|archive/*|pr/*) continue ;; esac
+  case "$short" in backup-bot|archive/*|pr/*|token-check/*) continue ;; esac
   if [ "$kind" = heads ]; then
     case "$short" in
       source/*) frozen "${short#source/}" || continue
