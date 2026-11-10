@@ -1,0 +1,47 @@
+name: 원본 저장소 백업
+
+# Runs on its own schedule, outside the source repository, so a push that
+# overwrites the source (and its workflow files) cannot stop it.
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: backup
+  cancel-in-progress: false
+
+env:
+  SRC_REPO: SYU-Taxi-Delivery/taxi-delivery-sharing
+  DST_REPO: ${{ github.repository }}
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: backup-bot
+
+      - name: 코드 백업 (덮어쓴 이전 상태는 archive/ 로 보관)
+        env:
+          # BACKUP_TOKEN (optional): a token that may also push commits which
+          # change workflow files. Without it, GITHUB_TOKEN is used.
+          TOKEN: ${{ secrets.BACKUP_TOKEN || github.token }}
+        run: |
+          git config --global user.name "backup-bot"
+          git config --global user.email "backup-bot@users.noreply.github.com"
+          export SRC_URL="https://github.com/${SRC_REPO}.git"
+          export DST_URL="https://x-access-token:${TOKEN}@github.com/${DST_REPO}.git"
+          bash scripts/mirror.sh
+
+      - name: 이슈·PR 글 백업
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/sync_issues.py
