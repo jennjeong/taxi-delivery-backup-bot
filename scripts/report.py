@@ -686,7 +686,7 @@ def main():
             for push in pushes:
                 messages.append(message(analyse(push, change, pushed, archived), label_for(change)))
     problems = audit() if GIT_DIR and DST_URL else []
-    if problems and (changes or ENV.get("MIRROR_OUTCOME") not in (None, "", "success") or ENV.get("TEST_MESSAGE") == "true"):
+    if problems:
         body = ["<b>⚠️ 백업 불일치</b>", "아래 항목은 아직 원본과 같지 않아 백업 완료로 보지 않아요.", ""]
         for label, what, detail in problems[:8]:
             body.append(f"• {E(label)}: {what}")
@@ -710,13 +710,16 @@ def main():
         messages.append("<b>❌ 백업 실행 실패</b>\n" + E(", ".join(failed)) + " 단계가 실패했어요."
                         + (f"\n이전 버전 보관에 실패해 갱신을 보류한 브랜치: {E(', '.join(h.split('/', 1)[1] for h in held))}" if held else "")
                         + (f"\n{link(run, '실행 기록')}" if run else ""))
-    if not messages and ENV.get("TEST_MESSAGE") == "true":
-        messages.append("<b>🔔 테스트 알림</b>\n지금은 원본에 새로 바뀐 내용이 없어요.\n\n"
+    if not messages:
+        # Nothing changed: say so, so a quiet chat still shows the bot is running.
+        now = kst(dt.datetime.now(dt.timezone.utc).isoformat())
+        state = "원본의 모든 브랜치·태그가 백업과 같아요." if GIT_DIR and DST_URL else "백업 상태는 확인하지 않았어요."
+        title = "🔔 테스트 알림" if ENV.get("TEST_MESSAGE") == "true" else "✅ 원본 변경 없음"
+        messages.append(f"<b>{title}</b>\n확인 시각: {E(now)}\n지난 확인 뒤로 원본에 새로 바뀐 내용이 없어요.\n"
+                        + f"💾 {state}\n\n"
                         + f"{link(f'{WEB}/{SRC}', '원본')} · {link(f'{WEB}/{DST}', '백업')}")
     for m in messages:
         send(m)
-    if not messages:
-        print("바뀐 내용이 없어 알림을 보내지 않습니다.")
 
 
 if __name__ == "__main__":

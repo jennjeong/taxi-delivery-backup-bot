@@ -320,6 +320,11 @@ assert any("브랜치: s2" in m and "• 완료: 백업" in m and "archive/s2/" 
 assert latest_matches()
 print("ok  9b. 다음 실행에서 보관 후 반영")
 
+msgs = backup("quiet")
+assert len(msgs) == 1 and "✅ 원본 변경 없음" in msgs[0] and "백업과 같아요" in msgs[0], msgs
+results.append(("10. 원본 변경 없음", msgs[0]))
+print("ok  10. 원본 변경 없음 알림")
+
 print(f"\n{len(results)} scenarios passed")
 if os.environ.get("SHOW") == "1" or os.environ.get("SEND") == "1":
     sys.path.insert(0, f"{ROOT}/scripts")
