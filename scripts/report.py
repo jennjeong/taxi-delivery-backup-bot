@@ -718,8 +718,10 @@ def main():
         messages.append(f"<b>{title}</b>\n확인 시각: {E(now)}\n지난 확인 뒤로 원본에 새로 바뀐 내용이 없어요.\n"
                         + f"💾 {state}\n\n"
                         + f"{link(f'{WEB}/{SRC}', '원본')} · {link(f'{WEB}/{DST}', '백업')}")
+    # With several source repositories, say which one each message is about.
+    label = ENV.get("REPO_LABEL")
     for m in messages:
-        send(m)
+        send(f"<b>[{E(label)}]</b> {m}" if label else m)
 
 
 if __name__ == "__main__":

@@ -24,25 +24,38 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: backup
-  cancel-in-progress: false
-
 env:
-  SRC_REPO: SYU-Taxi-Delivery/taxi-delivery-sharing
-  DST_REPO: jennjeong/taxi-delivery-sharing
   WORK_DIR: ${{ github.workspace }}/../mirror.git
   TRANSITIONS_FILE: ${{ github.workspace }}/../transitions.tsv
   ISSUES_SUMMARY_FILE: ${{ github.workspace }}/../issues-summary.txt
 
 jobs:
   backup:
+    name: 백업 (${{ matrix.label }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    # One job per source repository; a failure in one never stops the other.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: 백엔드
+            src: SYU-Taxi-Delivery/taxi-delivery-sharing
+            dst: jennjeong/taxi-delivery-sharing
+          - label: 프론트
+            src: SYU-Taxi-Delivery/taxi-delivery-sharing-fe
+            dst: jennjeong/taxi-delivery-sharing-fe
+    concurrency:
+      group: backup-${{ matrix.dst }}
+      cancel-in-progress: false
+    env:
+      SRC_REPO: ${{ matrix.src }}
+      DST_REPO: ${{ matrix.dst }}
+      REPO_LABEL: ${{ matrix.label }}
     steps:
       - uses: actions/checkout@v4
 
-      # BACKUP_TOKEN: fine-grained token for the backup repository only, with
+      # BACKUP_TOKEN: fine-grained token for the backup repositories only, with
       # Contents, Workflows and Issues set to read and write.
       - name: 토큰 확인
         env:
@@ -112,7 +125,7 @@ jobs:
           python3 scripts/report.py
 
       - name: 알림 예시 보내기
-        if: ${{ inputs.send_examples }}
+        if: ${{ inputs.send_examples && matrix.label == '백엔드' }}
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}

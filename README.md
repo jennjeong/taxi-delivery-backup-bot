@@ -1,7 +1,14 @@
 # 백업 봇
 
-[SYU-Taxi-Delivery/taxi-delivery-sharing](https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing)(원본)을
-10분마다 확인해 [jennjeong/taxi-delivery-sharing](https://github.com/jennjeong/taxi-delivery-sharing)(백업)에 복제합니다.
+원본 저장소 두 개를 10분마다 확인해 각각의 백업 저장소에 복제합니다.
+
+| 구분 | 원본 | 백업 |
+| --- | --- | --- |
+| 백엔드 | [SYU-Taxi-Delivery/taxi-delivery-sharing](https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing) | [jennjeong/taxi-delivery-sharing](https://github.com/jennjeong/taxi-delivery-sharing) |
+| 프론트 | [SYU-Taxi-Delivery/taxi-delivery-sharing-fe](https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing-fe) | [jennjeong/taxi-delivery-sharing-fe](https://github.com/jennjeong/taxi-delivery-sharing-fe) |
+
+저장소마다 따로 실행되므로 한쪽이 실패해도 다른 쪽 백업은 계속되고, 텔레그램 알림 앞에 `[백엔드]`, `[프론트]`가 붙습니다.
+`BACKUP_TOKEN`은 두 백업 저장소 모두에 접근할 수 있어야 합니다.
 봇은 원본과 백업 어느 쪽에도 없는 이 저장소에서 돌아가므로, 원본이 통째로 덮어써져도 멈추지 않고
 백업 저장소에는 원본의 브랜치만 남습니다.
 
