@@ -703,7 +703,7 @@ def main():
             messages.append("<b>📝 원본 이슈·PR 글 변경</b>\n" + E("\n".join(text[:15]))
                             + f"\n\n{link(f'{WEB}/{DST}/issues', '백업 이슈 보기')}")
     failed = [n for n, o in (("코드 백업", ENV.get("MIRROR_OUTCOME")), ("이슈·PR 글 백업", ENV.get("ISSUES_OUTCOME")))
-              if o and o != "success"]
+              if o and o not in ("success", "skipped")]
     if failed:
         held = [n for n, s in pushed.items() if s == "held"]
         run = ENV.get("RUN_URL")

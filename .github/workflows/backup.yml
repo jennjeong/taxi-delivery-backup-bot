@@ -42,9 +42,12 @@ jobs:
           - label: 백엔드
             src: SYU-Taxi-Delivery/taxi-delivery-sharing
             dst: jennjeong/taxi-delivery-sharing
+            issues: true
           - label: 프론트
             src: SYU-Taxi-Delivery/taxi-delivery-sharing-fe
             dst: jennjeong/taxi-delivery-sharing-fe
+            # Code only: the token cannot reach this backup's issues.
+            issues: false
     concurrency:
       group: backup-${{ matrix.dst }}
       cancel-in-progress: false
@@ -99,7 +102,7 @@ jobs:
 
       - name: 이슈·PR 글 백업
         id: issues
-        if: always()
+        if: ${{ always() && matrix.issues }}
         env:
           GH_TOKEN: ${{ secrets.BACKUP_TOKEN }}
           SRC_TOKEN: ${{ github.token }}
