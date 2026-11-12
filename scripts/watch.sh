@@ -10,7 +10,7 @@
 #
 # One watcher at a time. A watcher runs LIFETIME seconds, then dispatches its
 # successor (handoff=true) and keeps polling until the successor is running, so
-# no change falls in the gap. A non-handoff start (schedule, manual) exits at
+# no change falls in the gap. Any watcher stops as soon as a newer one runs. A non-handoff start (schedule, manual) exits at
 # once when a watcher is already running; the schedule only restarts a broken
 # chain.
 set -euo pipefail
@@ -73,11 +73,16 @@ while :; do
     gh workflow run "$WORKFLOW" -R "$REPO" -f handoff=true && handed_off=$SECONDS
     echo "다음 감시를 시작했어요."
   fi
-  if [ -n "$handed_off" ]; then
-    newer="$(others | awk -v me="$RUN_ID" '$1 > me' | head -1)"
-    if [ -n "$newer" ] || [ $((SECONDS - handed_off)) -ge 600 ]; then
-      echo "다음 감시($newer)에 넘기고 종료해요."
-      exit 0
-    fi
+  # Newest watcher wins: stop once a newer one is running (it took its own
+  # baseline already, so nothing is missed). After a handoff that never
+  # started, give up after 10 minutes and leave it to the schedule.
+  newer="$(others 2>/dev/null | awk -v me="$RUN_ID" '$1 > me' | head -1)" || newer=""
+  if [ -n "$newer" ]; then
+    echo "더 새 감시($newer)가 실행 중이라 넘기고 종료해요."
+    exit 0
+  fi
+  if [ -n "$handed_off" ] && [ $((SECONDS - handed_off)) -ge 600 ]; then
+    echo "다음 감시가 시작되지 않아 종료해요. 예약 실행이 다시 시작해요."
+    exit 0
   fi
 done
