@@ -78,6 +78,7 @@ jobs:
       # branch) it is kept as archive/... and verified; otherwise that ref is
       # held as it was and this step fails.
       - name: BACKUP_TOKEN 확인
+        id: token_check
         if: ${{ inputs.check_token }}
         env:
           TOKEN: ${{ secrets.BACKUP_TOKEN }}
@@ -134,6 +135,7 @@ jobs:
           TOKEN: ${{ secrets.BACKUP_TOKEN }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TOKEN_CHECK_OUTCOME: ${{ steps.token_check.outcome }}
           MIRROR_OUTCOME: ${{ steps.mirror.outcome }}
           ISSUES_OUTCOME: ${{ steps.issues.outcome }}
           TEST_MESSAGE: ${{ inputs.test_message }}

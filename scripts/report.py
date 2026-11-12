@@ -21,7 +21,7 @@ values are left out.
 Env: WORK_DIR, TRANSITIONS_FILE, SRC_REPO, DST_REPO, SRC_URL, DST_URL, STAMP.
 Optional: ACTIVITY_FILE (JSON instead of the API), NO_API=1, DRY_RUN=1,
 ISSUES_SUMMARY_FILE, MIRROR_OUTCOME, ISSUES_OUTCOME, TEST_MESSAGE,
-QUIET_UNCHANGED (true: send nothing when nothing changed),
+QUIET_UNCHANGED (true: send nothing when nothing changed), TOKEN_CHECK_OUTCOME,
 TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, RUN_URL.
 """
 import datetime as dt
@@ -38,6 +38,8 @@ import urllib.request
 
 ENV = os.environ
 GIT_DIR = ENV.get("WORK_DIR", "")
+# The mirror is missing when an earlier step (token check) failed first.
+MIRRORED = bool(GIT_DIR) and os.path.isdir(GIT_DIR)
 SRC = ENV.get("SRC_REPO", "")
 DST = ENV.get("DST_REPO", "")
 SRC_URL = ENV.get("SRC_URL", "")
@@ -686,7 +688,7 @@ def main():
                            "time": None, "type": None}]
             for push in pushes:
                 messages.append(message(analyse(push, change, pushed, archived), label_for(change)))
-    problems = audit() if GIT_DIR and DST_URL else []
+    problems = audit() if MIRRORED and DST_URL else []
     if problems:
         body = ["<b>⚠️ 백업 불일치</b>", "아래 항목은 아직 원본과 같지 않아 백업 완료로 보지 않아요.", ""]
         for label, what, detail in problems[:8]:
@@ -703,7 +705,8 @@ def main():
         if text:
             messages.append("<b>📝 원본 이슈·PR 글 변경</b>\n" + E("\n".join(text[:15]))
                             + f"\n\n{link(f'{WEB}/{DST}/issues', '백업 이슈 보기')}")
-    failed = [n for n, o in (("코드 백업", ENV.get("MIRROR_OUTCOME")), ("이슈·PR 글 백업", ENV.get("ISSUES_OUTCOME")))
+    failed = [n for n, o in (("BACKUP_TOKEN 확인", ENV.get("TOKEN_CHECK_OUTCOME")),
+                             ("코드 백업", ENV.get("MIRROR_OUTCOME")), ("이슈·PR 글 백업", ENV.get("ISSUES_OUTCOME")))
               if o and o not in ("success", "skipped")]
     if failed:
         held = [n for n, s in pushed.items() if s == "held"]
@@ -711,14 +714,14 @@ def main():
         messages.append("<b>❌ 백업 실행 실패</b>\n" + E(", ".join(failed)) + " 단계가 실패했어요."
                         + (f"\n이전 버전 보관에 실패해 갱신을 보류한 브랜치: {E(', '.join(h.split('/', 1)[1] for h in held))}" if held else "")
                         + (f"\n{link(run, '실행 기록')}" if run else ""))
-    if not messages and ENV.get("QUIET_UNCHANGED") == "true":
+    if not messages and ENV.get("QUIET_UNCHANGED") == "true" and ENV.get("TEST_MESSAGE") != "true":
         # Started by the watcher for the other repository: stay quiet.
         print("바뀐 게 없어 알림을 보내지 않아요.")
         return
     if not messages:
         # Nothing changed: say so, so a quiet chat still shows the bot is running.
         now = kst(dt.datetime.now(dt.timezone.utc).isoformat())
-        state = "원본의 모든 브랜치·태그가 백업과 같아요." if GIT_DIR and DST_URL else "백업 상태는 확인하지 않았어요."
+        state = "원본의 모든 브랜치·태그가 백업과 같아요." if MIRRORED and DST_URL else "백업 상태는 확인하지 않았어요."
         title = "🔔 테스트 알림" if ENV.get("TEST_MESSAGE") == "true" else "✅ 원본 변경 없음"
         messages.append(f"<b>{title}</b>\n확인 시각: {E(now)}\n지난 확인 뒤로 원본에 새로 바뀐 내용이 없어요.\n"
                         + f"💾 {state}\n\n"
