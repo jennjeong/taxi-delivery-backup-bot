@@ -34,10 +34,11 @@ SOURCES=(
   "백엔드|SYU-Taxi-Delivery/taxi-delivery-sharing|yes"
   "프론트|SYU-Taxi-Delivery/taxi-delivery-sharing-fe|no"
 )
+GIT_BASE="${GIT_BASE:-https://github.com}" # tests point this at local repos
 
 snapshot() { # $1 repo, $2 posts: one line that changes whenever the source does
   local refs posts=""
-  refs="$(git ls-remote "https://github.com/$1.git" | sha256sum | cut -c1-16)" || return 1
+  refs="$(git ls-remote "$GIT_BASE/$1.git" | sha256sum | cut -c1-16)" || return 1
   if [ "$2" = yes ]; then
     posts="$(gh api "repos/$1/issues?state=all&sort=updated&direction=desc&per_page=1" \
       -q '.[0].updated_at // ""')" || return 1
@@ -45,25 +46,25 @@ snapshot() { # $1 repo, $2 posts: one line that changes whenever the source does
   echo "$refs $posts"
 }
 
-declare -A last
-for s in "${SOURCES[@]}"; do
-  IFS='|' read -r label repo posts <<<"$s"
-  last[$label]="$(snapshot "$repo" "$posts")"
-  echo "$(date -u +%H:%M:%S) 기준 [$label] ${last[$label]}"
+last=() # same order as SOURCES
+for i in "${!SOURCES[@]}"; do
+  IFS='|' read -r label repo posts <<<"${SOURCES[$i]}"
+  last[i]="$(snapshot "$repo" "$posts")"
+  echo "$(date -u +%H:%M:%S) 기준 [$label] ${last[i]}"
 done
 
 start=$SECONDS
 handed_off=""
 while :; do
   sleep "$POLL"
-  for s in "${SOURCES[@]}"; do
-    IFS='|' read -r label repo posts <<<"$s"
+  for i in "${!SOURCES[@]}"; do
+    IFS='|' read -r label repo posts <<<"${SOURCES[$i]}"
     # A failed read (network, rate limit) is skipped, never taken as a change.
     now="$(snapshot "$repo" "$posts")" || { echo "[$label] 확인 실패, 다음에 다시"; continue; }
-    if [ "$now" != "${last[$label]}" ]; then
+    if [ "$now" != "${last[i]}" ]; then
       echo "$(date -u +%H:%M:%S) [$label] 변경 감지 → 백업 실행"
       if gh workflow run backup.yml -R "$REPO" -f from_watch=true; then
-        last[$label]="$now"
+        last[i]="$now"
       fi
     fi
   done
