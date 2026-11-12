@@ -14,6 +14,12 @@ T = tempfile.mkdtemp()
 SRC, DST, WORK = f"{T}/src.git", f"{T}/dst.git", f"{T}/work"
 clock = [0]
 
+# In Actions these come from the real backup run in the same job (its issue
+# summary, outcomes, quiet mode); the scenarios must not pick them up.
+for k in ("ISSUES_SUMMARY_FILE", "MIRROR_OUTCOME", "ISSUES_OUTCOME", "TOKEN_CHECK_OUTCOME",
+          "QUIET_UNCHANGED", "TEST_MESSAGE", "RUN_URL", "TRANSITIONS_FILE", "WORK_DIR", "REPO_LABEL"):
+    os.environ.pop(k, None)
+
 
 def sh(*args, cwd=WORK, env=None, check=True):
     r = subprocess.run(args, cwd=cwd, capture_output=True, text=True, env={**os.environ, **(env or {})})
