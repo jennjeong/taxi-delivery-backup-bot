@@ -94,6 +94,16 @@ jobs:
           git push -q "$url" "HEAD:$ref"
           git push -q "$url" ":$ref"
           echo "BACKUP_TOKEN으로 워크플로 파일($f)을 바꾼 커밋을 올리고 지웠어요."
+          if [ "${{ matrix.issues }}" = "true" ]; then
+            # Issues: edit the newest issue copy with its own title (no change).
+            n="$(GH_TOKEN="$TOKEN" gh api "repos/${DST_REPO}/issues?state=all&per_page=1" -q '.[0].number')"
+            t="$(GH_TOKEN="$TOKEN" gh api "repos/${DST_REPO}/issues/$n" -q .title)"
+            if GH_TOKEN="$TOKEN" gh api -X PATCH "repos/${DST_REPO}/issues/$n" -f title="$t" >/dev/null; then
+              echo "BACKUP_TOKEN으로 이슈 #$n 수정 가능해요."
+            else
+              echo "BACKUP_TOKEN으로 이슈 #$n을 수정할 수 없어요. Issues 권한을 확인하세요."; exit 1
+            fi
+          fi
 
       - name: 코드 백업 (이전 버전 보관 후 최신 상태 반영)
         id: mirror
