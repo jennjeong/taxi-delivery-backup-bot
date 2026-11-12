@@ -1,0 +1,35 @@
+name: 원본 변경 감시
+
+# GitHub runs scheduled workflows only every few hours here, so alerts used to
+# arrive in batches. This job polls the sources every 30 seconds and starts the
+# backup (and its Telegram alert) as soon as something changes. Each watcher
+# hands over to the next before the 6-hour job limit; the schedule below only
+# restarts the chain if it ever breaks (see scripts/watch.sh).
+on:
+  schedule:
+    - cron: "7,37 * * * *"
+  workflow_dispatch:
+    inputs:
+      handoff:
+        description: "이전 감시에서 넘겨받기 (직접 실행할 때는 끄세요)"
+        type: boolean
+        default: false
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  watch:
+    name: 감시
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+      - name: 원본 확인 (30초마다)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          HANDOFF: ${{ inputs.handoff }}
+        run: bash scripts/watch.sh

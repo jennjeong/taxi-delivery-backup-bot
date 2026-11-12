@@ -4,6 +4,8 @@ name: 원본 저장소 백업
 # push that overwrites the source cannot stop it, and the backup holds only
 # the source's own branches (its default branch is the source's).
 on:
+  # Changes start this right away through watch.yml; the schedule is a
+  # periodic full check (GitHub runs it only every few hours).
   schedule:
     - cron: "*/10 * * * *"
   workflow_dispatch:
@@ -18,6 +20,10 @@ on:
         default: false
       send_examples:
         description: "알림 예시(테스트 저장소 시나리오)를 텔레그램으로 보내기"
+        type: boolean
+        default: false
+      from_watch:
+        description: "감시가 변경을 보고 실행 (바뀐 게 없는 저장소는 알림 생략)"
         type: boolean
         default: false
 
@@ -121,6 +127,7 @@ jobs:
           MIRROR_OUTCOME: ${{ steps.mirror.outcome }}
           ISSUES_OUTCOME: ${{ steps.issues.outcome }}
           TEST_MESSAGE: ${{ inputs.test_message }}
+          QUIET_UNCHANGED: ${{ inputs.from_watch }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           export SRC_URL="https://github.com/${SRC_REPO}.git"

@@ -1,6 +1,7 @@
 # 백업 봇
 
-원본 저장소 두 개를 10분마다 확인해 각각의 백업 저장소에 복제합니다.
+원본 저장소 두 개를 30초마다 확인하고, 바뀌면 바로 각각의 백업 저장소에 복제한 뒤 텔레그램으로 알립니다.
+(감시: `.github/workflows/watch.yml`, `scripts/watch.sh` / 백업: `.github/workflows/backup.yml`)
 
 | 구분 | 원본 | 백업 |
 | --- | --- | --- |
@@ -55,7 +56,12 @@ git push https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing.git origin/a
 
 ## 알아 둘 것
 
-- GitHub 예약 실행은 몇 분씩 늦어질 수 있습니다. `Actions` 탭의 **Run workflow**로 바로 실행할 수도 있습니다.
+- 감시 작업은 30초마다 원본의 브랜치·태그·PR 코드와 백엔드 이슈·PR 글의 최근 수정 시각을 확인합니다.
+  바뀌면 백업을 바로 실행하므로 알림은 보통 1~2분 안에 옵니다. 감시 하나는 5시간 40분 동안 돌고
+  끝나기 전에 다음 감시를 직접 시작합니다. 이어 붙이기가 끊기면 30분마다 잡힌 예약이 다시 시작합니다.
+  감시가 실행한 백업은 바뀐 게 없는 저장소에 대해 `✅ 원본 변경 없음`을 보내지 않습니다.
+- 공개 저장소라 Actions 사용 시간은 무료입니다. 비공개로 바꾸면 감시가 무료 사용 시간을 모두 씁니다.
+- GitHub 예약 실행은 몇 시간씩 늦어질 수 있습니다(이 저장소에서는 4~8시간 간격). `Actions` 탭의 **Run workflow**로 바로 실행할 수도 있습니다.
 - 공개 저장소에 60일 동안 활동이 없으면 GitHub가 예약 실행을 멈춥니다. 그때는 `Actions` 탭에서 다시 켜 주세요.
 - 이 저장소의 시크릿 세 개가 필요합니다.
   - `BACKUP_TOKEN`: 백업 저장소 하나에만 접근하는 fine-grained 토큰. 권한은 Contents·Workflows·Issues를 Read and write로.

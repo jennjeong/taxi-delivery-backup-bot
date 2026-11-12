@@ -21,6 +21,7 @@ values are left out.
 Env: WORK_DIR, TRANSITIONS_FILE, SRC_REPO, DST_REPO, SRC_URL, DST_URL, STAMP.
 Optional: ACTIVITY_FILE (JSON instead of the API), NO_API=1, DRY_RUN=1,
 ISSUES_SUMMARY_FILE, MIRROR_OUTCOME, ISSUES_OUTCOME, TEST_MESSAGE,
+QUIET_UNCHANGED (true: send nothing when nothing changed),
 TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, RUN_URL.
 """
 import datetime as dt
@@ -710,6 +711,10 @@ def main():
         messages.append("<b>❌ 백업 실행 실패</b>\n" + E(", ".join(failed)) + " 단계가 실패했어요."
                         + (f"\n이전 버전 보관에 실패해 갱신을 보류한 브랜치: {E(', '.join(h.split('/', 1)[1] for h in held))}" if held else "")
                         + (f"\n{link(run, '실행 기록')}" if run else ""))
+    if not messages and ENV.get("QUIET_UNCHANGED") == "true":
+        # Started by the watcher for the other repository: stay quiet.
+        print("바뀐 게 없어 알림을 보내지 않아요.")
+        return
     if not messages:
         # Nothing changed: say so, so a quiet chat still shows the bot is running.
         now = kst(dt.datetime.now(dt.timezone.utc).isoformat())
