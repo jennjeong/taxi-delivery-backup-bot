@@ -40,7 +40,8 @@ jobs:
     name: 백업 (${{ matrix.label }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # One job per source repository; a failure in one never stops the other.
+    # One job per source repository (only the backend now; the frontend is
+    # not backed up). Add an entry here and in scripts/watch.sh to add one.
     strategy:
       fail-fast: false
       matrix:
@@ -49,11 +50,6 @@ jobs:
             src: SYU-Taxi-Delivery/taxi-delivery-sharing
             dst: jennjeong/taxi-delivery-sharing
             issues: true
-          - label: 프론트
-            src: SYU-Taxi-Delivery/taxi-delivery-sharing-fe
-            dst: jennjeong/taxi-delivery-sharing-fe
-            # Code only: the token cannot reach this backup's issues.
-            issues: false
     concurrency:
       group: backup-${{ matrix.dst }}
       cancel-in-progress: false

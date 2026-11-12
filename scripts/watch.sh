@@ -3,10 +3,10 @@
 #
 # GitHub runs this repository's schedule only every few hours, so pushes piled
 # up and their alerts arrived together. This loop polls every POLL seconds:
-#   - each source's refs (branches, tags, PR heads) with git ls-remote
-#   - the backend's newest issue/PR update time (its posts are backed up too)
-# and on a change dispatches backup.yml with from_watch=true, which backs up
-# both sources but stays silent for the one that did not change.
+#   - the backend's refs (branches, tags, PR heads) with git ls-remote
+#   - its newest issue/PR update time (its posts are backed up too)
+# and on a change dispatches backup.yml with from_watch=true, which stays
+# silent for any source that did not change.
 #
 # One watcher at a time. A watcher runs LIFETIME seconds, then dispatches its
 # successor (handoff=true) and keeps polling until the successor is running, so
@@ -32,7 +32,6 @@ fi
 # label|source repo|watch posts too
 SOURCES=(
   "백엔드|SYU-Taxi-Delivery/taxi-delivery-sharing|yes"
-  "프론트|SYU-Taxi-Delivery/taxi-delivery-sharing-fe|no"
 )
 GIT_BASE="${GIT_BASE:-https://github.com}" # tests point this at local repos
 

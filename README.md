@@ -1,16 +1,16 @@
 # 백업 봇
 
-원본 저장소 두 개를 30초마다 확인하고, 바뀌면 바로 각각의 백업 저장소에 복제한 뒤 텔레그램으로 알립니다.
+백엔드 원본 저장소를 30초마다 확인하고, 바뀌면 바로 백업 저장소에 복제한 뒤 텔레그램으로 알립니다.
 (감시: `.github/workflows/watch.yml`, `scripts/watch.sh` / 백업: `.github/workflows/backup.yml`)
 
 | 구분 | 원본 | 백업 |
 | --- | --- | --- |
 | 백엔드 | [SYU-Taxi-Delivery/taxi-delivery-sharing](https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing) | [jennjeong/taxi-delivery-sharing](https://github.com/jennjeong/taxi-delivery-sharing) |
-| 프론트 | [SYU-Taxi-Delivery/taxi-delivery-sharing-fe](https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing-fe) | [jennjeong/taxi-delivery-sharing-fe](https://github.com/jennjeong/taxi-delivery-sharing-fe) |
 
-프론트는 코드(브랜치·태그·PR 코드)만 복제하고 이슈·PR 글은 백업하지 않습니다.
-저장소마다 따로 실행되므로 한쪽이 실패해도 다른 쪽 백업은 계속되고, 텔레그램 알림 앞에 `[백엔드]`, `[프론트]`가 붙습니다.
-`BACKUP_TOKEN`은 두 백업 저장소 모두에 접근할 수 있어야 합니다.
+프론트 저장소는 백업하지 않습니다(이전에 복제해 둔 `jennjeong/taxi-delivery-sharing-fe`는 더 갱신되지 않음).
+텔레그램 알림 앞에는 `[백엔드]`가 붙습니다. 저장소를 더 백업하려면 `backup.yml`의 matrix와 `scripts/watch.sh`의
+`SOURCES`에 한 줄씩 추가합니다.
+`BACKUP_TOKEN`은 백업 저장소 `jennjeong/taxi-delivery-sharing`에 접근할 수 있어야 합니다.
 봇은 원본과 백업 어느 쪽에도 없는 이 저장소에서 돌아가므로, 원본이 통째로 덮어써져도 멈추지 않고
 백업 저장소에는 원본의 브랜치만 남습니다.
 
@@ -56,10 +56,9 @@ git push https://github.com/SYU-Taxi-Delivery/taxi-delivery-sharing.git origin/a
 
 ## 알아 둘 것
 
-- 감시 작업은 30초마다 원본의 브랜치·태그·PR 코드와 백엔드 이슈·PR 글의 최근 수정 시각을 확인합니다.
+- 감시 작업은 30초마다 원본의 브랜치·태그·PR 코드와 이슈·PR 글의 최근 수정 시각을 확인합니다.
   바뀌면 백업을 바로 실행하므로 알림은 보통 1~2분 안에 옵니다. 감시 하나는 5시간 40분 동안 돌고
   끝나기 전에 다음 감시를 직접 시작합니다. 이어 붙이기가 끊기면 30분마다 잡힌 예약이 다시 시작합니다.
-  감시가 실행한 백업은 바뀐 게 없는 저장소에 대해 `✅ 원본 변경 없음`을 보내지 않습니다.
 - 공개 저장소라 Actions 사용 시간은 무료입니다. 비공개로 바꾸면 감시가 무료 사용 시간을 모두 씁니다.
 - GitHub 예약 실행은 몇 시간씩 늦어질 수 있습니다(이 저장소에서는 4~8시간 간격). `Actions` 탭의 **Run workflow**로 바로 실행할 수도 있습니다.
 - 공개 저장소에 60일 동안 활동이 없으면 GitHub가 예약 실행을 멈춥니다. 그때는 `Actions` 탭에서 다시 켜 주세요.
